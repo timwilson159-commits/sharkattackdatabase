@@ -39,6 +39,7 @@ h1,h2,h3,h4{letter-spacing:-.015em}
 .brand small{display:block;color:var(--muted);font-size:.72rem;white-space:nowrap}
 nav.tabs{display:flex;gap:2px;height:100%;margin-left:8px;flex:none}
 nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:0 14px;height:100%;cursor:pointer;font:inherit;font-weight:600;font-size:.9rem;margin-top:1px;white-space:nowrap}
+nav.tabs button[hidden]{display:none}
 nav.tabs button:hover{color:var(--ink)}
 nav.tabs button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
 .tools{margin-left:auto;display:flex;gap:8px}
@@ -248,7 +249,7 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <div class="brand">
+  <div class="brand" title="Back to Data Investigations" style="cursor:pointer">
     <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#0f766e"/><path d="M8 44c10-4 16-14 20-30 6 12 16 18 28 22-10 2-16 8-20 14-4-4-14-6-28-6z" fill="#fff"/></svg>
     <div><b>Shark Incident Explorer</b><small>Australian Shark-Incident Database</small></div>
   </div>

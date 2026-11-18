@@ -944,6 +944,7 @@ function setTab(t) {
   document.querySelectorAll('nav.tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === t));
   ['invest', 'chart', 'table', 'summary', 'about'].forEach((k) => ($('tab-' + k).hidden = k !== t));
   document.querySelector('.layout').classList.toggle('noside', t === 'invest');
+  document.querySelector('nav.tabs [data-tab=invest]').hidden = t !== 'invest';
   if (t === 'chart') syncControls();
   if (t === 'table') syncTableControls();
   renderActive();
@@ -975,6 +976,7 @@ function init() {
   if (matchMedia('(max-width:980px)').matches) $('side').classList.add('closed');
   document.querySelectorAll('nav.tabs button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
   $('goPred').onclick = () => setTab('invest');
+  document.querySelector('.brand').onclick = () => { setTab('invest'); window.scrollTo(0, 0); };
   $('themeBtn').onclick = () => { document.documentElement.dataset.theme = isDark() ? 'light' : 'dark'; try { localStorage.setItem('shark_theme', document.documentElement.dataset.theme); } catch (e) { } renderActive(); };
   try { const th = localStorage.getItem('shark_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderActive());
