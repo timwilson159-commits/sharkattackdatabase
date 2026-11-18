@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shark Incident Explorer</title>
+<meta name="description" content="Explore, filter, graph and table 1,296 Australian shark incidents to test predictions and find patterns in big data.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b6e99'/%3E%3Cpath d='M8 44c10-4 16-14 20-30 6 12 16 18 28 22-10 2-16 8-20 14-4-4-14-6-28-6z' fill='white'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f3f6f9;--card:#ffffff;--ink:#12202e;--muted:#566677;--line:#d9e1e8;--accent:#0b6e99;--accent-ink:#ffffff;
+  --soft:#e8f1f7;--grid:rgba(18,32,46,.09);--hero1:#0a3d5c;--hero2:#0b6e99;--warn:#8a5a00;--warnbg:#fff4d6;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d151c;--card:#15202a;--ink:#e8eef3;--muted:#a1b2c2;--line:#26363f;--accent:#4db3e0;--accent-ink:#06202e;
+  --soft:#1b2c39;--grid:rgba(232,238,243,.10);--hero1:#082a3f;--hero2:#0b4a6b;--warn:#f0c36a;--warnbg:#3a2f12;color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0d151c;--card:#15202a;--ink:#e8eef3;--muted:#a1b2c2;--line:#26363f;--accent:#4db3e0;--accent-ink:#06202e;
+  --soft:#1b2c39;--grid:rgba(232,238,243,.10);--hero1:#082a3f;--hero2:#0b4a6b;--warn:#f0c36a;--warnbg:#3a2f12;color-scheme:dark;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header.hero{background:linear-gradient(120deg,var(--hero1),var(--hero2));color:#fff;padding:14px 16px}
+.hero-in{max-width:1500px;margin:0 auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.hero h1{margin:0;font-size:1.35rem;letter-spacing:.2px}
+.hero p{margin:2px 0 0;opacity:.85;font-size:.88rem}
+.hero .sp{flex:1}
+.hbtn{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 11px;cursor:pointer;font:inherit;font-size:.85rem}
+.hbtn:hover{background:rgba(255,255,255,.25)}
+.layout{max-width:1500px;margin:0 auto;display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px}
+aside.side{position:sticky;top:12px;align-self:start;max-height:calc(100vh - 24px);overflow:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card h2,.card h3{margin:0 0 8px;font-size:1rem}
+.count{font-size:1.05rem;font-weight:650}
+.count small{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
+.bar{height:6px;background:var(--soft);border-radius:4px;margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:100%;transition:width .2s}
+select,input[type=number],input[type=text],input[type=search],textarea{width:100%;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font:inherit;font-size:.9rem}
+select:focus,input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+label.f{display:block;font-size:.78rem;color:var(--muted);margin:0 0 3px;font-weight:600}
+button.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:7px 12px;font:inherit;font-size:.88rem;cursor:pointer;font-weight:600}
+button.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button.link{background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;font-size:.8rem;padding:0;text-decoration:underline}
+.rule{border:1px solid var(--line);border-radius:10px;margin:8px 0;background:var(--soft)}
+.rule>header{display:flex;align-items:center;gap:6px;padding:7px 9px;font-weight:650;font-size:.88rem}
+.rule>header span.sub{font-weight:400;color:var(--muted);font-size:.78rem;flex:1;text-align:right}
+.rule>header button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
+.rule .body{padding:0 9px 9px}
+.checks{max-height:170px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 6px;margin-top:5px}
+.checks label{display:flex;gap:6px;align-items:center;font-size:.84rem;padding:2px 0;cursor:pointer}
+.checks label em{margin-left:auto;color:var(--muted);font-style:normal;font-size:.76rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hint{font-size:.76rem;color:var(--muted);margin-top:4px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+nav.tabs button{background:var(--card);border:1px solid var(--line);color:var(--ink);padding:8px 16px;border-radius:9px;cursor:pointer;font:inherit;font-weight:600}
+nav.tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.typebar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.typebar button{background:var(--soft);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;cursor:pointer;font:inherit;font-size:.88rem}
+.typebar button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:650}
+.ctrl{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 12px;align-items:end}
+.ctrl [hidden]{display:none}
+.chk{display:flex;gap:6px;align-items:center;font-size:.87rem;padding:6px 0}
+.chk input{width:auto}
+.chartwrap{position:relative;height:480px}
+.note{font-size:.84rem;color:var(--muted);margin:8px 0 0}
+.stat{background:var(--soft);border-left:4px solid var(--accent);border-radius:6px;padding:8px 11px;margin-top:10px;font-size:.88rem}
+.stat.warn{border-color:#eda100;background:var(--warnbg);color:var(--warn)}
+.presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-top:10px}
+.preset{text-align:left;background:var(--soft);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:9px 11px;cursor:pointer;font:inherit}
+.preset:hover{border-color:var(--accent)}
+.preset b{display:block;font-size:.86rem}
+.preset span{font-size:.76rem;color:var(--muted)}
+summary{cursor:pointer;font-weight:650}
+.tblwrap{overflow:auto;max-height:640px;border:1px solid var(--line);border-radius:10px}
+table.t{border-collapse:collapse;width:100%;font-size:.84rem}
+table.t th,table.t td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+table.t td.n,table.t th.n{text-align:right}
+table.t thead th{position:sticky;top:0;background:var(--soft);cursor:pointer;user-select:none;z-index:1}
+table.t thead th.nosort{cursor:default}
+table.t tbody tr:hover{background:var(--soft)}
+table.t td.na{color:var(--muted)}
+table.t tfoot td,table.t td.tot,table.t th.tot{font-weight:700;background:var(--soft)}
+.pager{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:.86rem}
+.pager select{width:auto}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.chip{background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:2px 9px;font-size:.8rem}
+.chip button{background:none;border:0;cursor:pointer;color:var(--muted)}
+.colpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:2px 10px;max-height:260px;overflow:auto;margin-top:8px}
+.colpick h4{grid-column:1/-1;margin:6px 0 0;font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.colpick label{font-size:.84rem;display:flex;gap:6px;align-items:center}
+.colpick input{width:auto}
+.prose h3{margin-top:18px}
+.prose li{margin:3px 0}
+.bartiny{display:inline-block;height:9px;background:var(--accent);border-radius:3px;vertical-align:middle}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.88rem;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.toast.on{opacity:1}
+#filtToggle{display:none}
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr}
+  aside.side{position:static;max-height:none}
+  #filtToggle{display:inline-block}
+  aside.side.closed #sideBody{display:none}
+  .chartwrap{height:380px}
+}
+</style>
+</head>
+<body>
+<header class="hero"><div class="hero-in">
+  <div><h1>🦈 Shark Incident Explorer</h1><p>Australian Shark-Incident Database · filter, graph and table 1,296 incidents to test predictions and spot patterns</p></div>
+  <div class="sp"></div>
+  <button class="hbtn" id="copyLink" title="Copy a link that restores your filters and graph">🔗 Copy link to my view</button>
+  <button class="hbtn" id="themeBtn">🌓 Theme</button>
+</div></header>
+
+<div class="layout">
+<aside class="side" id="side">
+  <div class="card">
+    <div class="count" id="countTxt">–<small id="countSub"></small></div>
+    <div class="bar"><i id="countBar"></i></div>
+    <button class="btn ghost" id="filtToggle" style="margin-top:10px;width:100%">Show / hide filters</button>
+  </div>
+  <div id="sideBody">
+  <div class="card">
+    <h2>Filters</h2>
+    <p class="hint" style="margin:0 0 8px">Filters apply to the chart, table and summary. Only incidents matching <b>all</b> filters are kept.</p>
+    <label class="f" for="addFilter">Add a filter on…</label>
+    <select id="addFilter"></select>
+    <div id="rules"></div>
+    <button class="btn ghost" id="clearFilters" style="margin-top:8px;width:100%">Clear all filters</button>
+  </div>
+  </div>
+</aside>
+
+<main>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="chart" aria-selected="true">📊 Graph</button>
+    <button role="tab" data-tab="table" aria-selected="false">📋 Data table</button>
+    <button role="tab" data-tab="summary" aria-selected="false">🧮 Summary &amp; stats</button>
+    <button role="tab" data-tab="about" aria-selected="false">ℹ️ About the data</button>
+  </nav>
+
+  <section id="tab-chart">
+    <details class="card" id="starters" open>
+      <summary>Start here: investigation ideas <span class="hint">(make a prediction first, then test it)</span></summary>
+      <div class="presets" id="presetGrid"></div>
+    </details>
+    <div class="card">
+      <div class="typebar" id="typeBar" role="group" aria-label="Graph type"></div>
+      <div class="ctrl">
+        <div id="r-x"><label class="f" id="l-x" for="c-x">X axis</label><select id="c-x"></select></div>
+        <div id="r-y" hidden><label class="f" for="c-y">Y axis</label><select id="c-y"></select></div>
+        <div id="r-measure"><label class="f" for="c-measure">Measure (Y axis)</label><select id="c-measure"></select></div>
+        <div id="r-vf" hidden><label class="f" for="c-vf">…of this field</label><select id="c-vf"></select></div>
+        <div id="r-split"><label class="f" for="c-split">Split / colour by</label><select id="c-split"></select></div>
+        <div id="r-bin" hidden><label class="f" for="c-bin">Bin width (blank = auto)</label><input type="number" id="c-bin" min="0" step="any" placeholder="auto"></div>
+        <div id="r-sort" hidden><label class="f" for="c-sort">Sort bars</label><select id="c-sort"><option value="natural">Natural order</option><option value="desc">Largest first</option><option value="asc">Smallest first</option><option value="alpha">A → Z</option></select></div>
+        <div id="r-top" hidden><label class="f" for="c-top">Show top … groups (rest → Other)</label><input type="number" id="c-top" min="2" max="30" step="1"></div>
+        <div id="r-title"><label class="f" for="c-title">Graph title (blank = automatic)</label><input type="text" id="c-title" maxlength="120"></div>
+      </div>
+      <div class="ctrl" style="margin-top:4px">
+        <label class="chk" id="r-trend"><input type="checkbox" id="c-trend"><span id="l-trend">Add trendline (line of best fit)</span></label>
+        <label class="chk" id="r-stack" hidden><input type="checkbox" id="c-stack"><span>Stack the series</span></label>
+        <label class="chk" id="r-horiz" hidden><input type="checkbox" id="c-horiz"><span>Horizontal bars</span></label>
+        <label class="chk" id="r-jitter" hidden><input type="checkbox" id="c-jitter"><span>Jitter overlapping points</span></label>
+        <label class="chk" id="r-vals"><input type="checkbox" id="c-vals"><span>Show values on graph</span></label>
+      </div>
+    </div>
+    <div class="card">
+      <div class="chartwrap" id="chartWrap"><canvas id="chart" role="img" aria-label="Graph of the filtered shark incident data"></canvas></div>
+      <div id="chartStats"></div>
+      <p class="note" id="chartNote"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn ghost" id="dlPng">⬇ Save graph as image</button>
+        <button class="btn ghost" id="toTable">📋 See these records in the table</button>
+      </div>
+      <details style="margin-top:12px"><summary>View the graph's data as a table</summary><div id="chartTable" class="tblwrap" style="margin-top:8px;max-height:340px"></div></details>
+    </div>
+    <div class="card">
+      <h3>📝 My prediction and findings</h3>
+      <textarea id="notes" rows="4" placeholder="Before you graph: what do you predict? After: what does the data show? Did the evidence support your prediction? What other factors could explain it?"></textarea>
+      <p class="hint">Saved in this browser only.</p>
+    </div>
+  </section>
+
+  <section id="tab-table" hidden>
+    <div class="card">
+      <div class="row2" style="grid-template-columns:2fr 1fr 1fr;align-items:end">
+        <div><label class="f" for="t-q">Search the table</label><input type="search" id="t-q" placeholder="e.g. bondi, tiger, 1995…"></div>
+        <div><label class="f" for="t-size">Rows per page</label><select id="t-size"><option>25</option><option>50</option><option>100</option><option>250</option></select></div>
+        <div style="display:flex;gap:6px"><button class="btn ghost" id="t-csv" style="flex:1">⬇ CSV</button></div>
+      </div>
+      <details style="margin-top:8px"><summary>Choose columns</summary><div class="colpick" id="colpick"></div></details>
+      <div class="hint" style="margin-top:8px">Click a column heading to sort. <b>Shift+click</b> adds a second sort level.</div>
+      <div class="chips" id="sortChips"></div>
+      <div class="tblwrap" id="tblWrap"></div>
+      <div class="pager" id="pager"></div>
+    </div>
+  </section>
+
+  <section id="tab-summary" hidden>
+    <div class="card">
+      <h2>Summary table (pivot)</h2>
+      <div class="ctrl">
+        <div><label class="f" for="p-row">Rows</label><select id="p-row"></select></div>
+        <div><label class="f" for="p-col">Columns (optional)</label><select id="p-col"></select></div>
+        <div><label class="f" for="p-measure">Cell value</label><select id="p-measure"></select></div>
+        <div id="pr-vf" hidden><label class="f" for="p-vf">…of this field</label><select id="p-vf"></select></div>
+        <div id="pr-show"><label class="f" for="p-show">Show counts as</label><select id="p-show"><option value="values">Counts</option><option value="row">% of row</option><option value="col">% of column</option><option value="all">% of all</option></select></div>
+        <div id="pr-bin" hidden><label class="f" for="p-bin">Bin width (numeric rows)</label><input type="number" id="p-bin" min="0" step="any" placeholder="auto"></div>
+      </div>
+      <div class="tblwrap" id="pivot" style="margin-top:10px;max-height:520px"></div>
+      <p class="note" id="pivotNote"></p>
+      <button class="btn ghost" id="pivotChart" style="margin-top:8px">📊 Graph this summary</button>
+    </div>
+    <div class="card">
+      <h2>Field profile</h2>
+      <div style="max-width:320px"><label class="f" for="pf-field">Field</label><select id="pf-field"></select></div>
+      <div id="profile" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section id="tab-about" hidden>
+    <div class="card prose" id="aboutBox"></div>
+  </section>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="chart.umd.min.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
