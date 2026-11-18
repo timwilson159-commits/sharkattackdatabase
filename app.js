@@ -78,7 +78,7 @@ F.forEach((f) => {
 /* ---------- State ---------- */
 const DEF_COLS = ['id', 'year', 'month', 'state', 'location', 'species', 'length', 'outcome', 'activity', 'gender', 'age', 'provoked'];
 const S = {
-  tab: 'chart', filters: [],
+  tab: 'chart', colors: { scheme: 'default', over: {} }, pred: null, _cols: [],
   chart: { type: 'column', x: 'species', y: 'length', measure: 'count', vf: 'length', split: '', bin: '', sort: 'desc', top: 10, trend: false, stack: true, horiz: false, jitter: true, vals: true, title: '' },
   table: { cols: DEF_COLS.slice(), sort: [], page: 0, size: 25, q: '' },
   piv: { row: 'state', col: 'outcome', measure: 'count', vf: 'age', show: 'values', bin: '' },
@@ -90,7 +90,8 @@ let chart = null;
 /* ---------- Helpers ---------- */
 const isDark = () => document.documentElement.dataset.theme === 'dark' || (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const palette = () => (isDark() ? PAL.dark : PAL.light);
+const palette = () => (S.colors.scheme !== 'default' && SCHEMES[S.colors.scheme] ? SCHEMES[S.colors.scheme].c.slice() : isDark() ? PAL.dark : PAL.light);
+const ov = (name, base) => S.colors.over[name] || base;
 const otherCol = () => (isDark() ? PAL.other.dark : PAL.other.light);
 const nrCol = () => (isDark() ? PAL.nr.dark : PAL.nr.light);
 const fmtN = (v) => {
@@ -133,82 +134,93 @@ const trendHTML = (rg, xl, yl, what) => rg
     '<br><span class="hint">Correlation is not causation: a trend can come from a third factor, from how the data was collected, or from chance.</span></div>'
   : '<div class="stat warn">Not enough varied data points to fit a trendline.</div>';
 
-/* ---------- Filtering ---------- */
-function pass(r) {
-  for (const fl of S.filters) {
-    const f = FB[fl.key], v = r[fl.key];
-    if (f.t === 'cat') { if (!fl.sel.has(v == null ? NA : v)) return false; }
-    else if (f.t === 'num') {
-      if (fl.min == null && fl.max == null) continue;
-      if (v == null) return false;
-      if (fl.min != null && v < fl.min) return false;
-      if (fl.max != null && v > fl.max) return false;
-    } else if (fl.q) { if (v == null || !String(v).toLowerCase().includes(fl.q.toLowerCase())) return false; }
-  }
-  return true;
+/* ---------- Filtering (all fields listed; expand to use) ---------- */
+const FL = {};
+const blankFilter = (f) => ({ key: f.k, sel: f.t === 'cat' ? new Set(f.vals.concat([NA])) : null, min: null, max: null, q: '' });
+F.forEach((f) => (FL[f.k] = blankFilter(f)));
+const isActive = (fl) => { const f = FB[fl.key]; return f.t === 'cat' ? fl.sel.size !== f.vals.length + 1 : f.t === 'num' ? fl.min != null || fl.max != null : !!fl.q; };
+function passOne(fl, r) {
+  const f = FB[fl.key], v = r[fl.key];
+  if (f.t === 'cat') return fl.sel.has(v == null ? NA : v);
+  if (f.t === 'num') { if (v == null) return false; return !(fl.min != null && v < fl.min) && !(fl.max != null && v > fl.max); }
+  return v != null && String(v).toLowerCase().includes(fl.q.toLowerCase());
 }
 function applyFilters() {
-  RF = D.filter(pass);
+  const act = F.map((f) => FL[f.k]).filter(isActive);
+  RF = act.length ? D.filter((r) => act.every((fl) => passOne(fl, r))) : D.slice();
   const n = RF.length;
-  $('countTxt').firstChild.nodeValue = n.toLocaleString() + ' of ' + D.length.toLocaleString() + ' incidents';
-  $('countSub').textContent = n === D.length ? 'No filters applied' : Math.round((n / D.length) * 100) + '% of the database match your filters';
+  $('countNum').textContent = n.toLocaleString();
+  $('countOf').textContent = 'of ' + D.length.toLocaleString() + ' incidents';
+  $('countSub').textContent = act.length ? act.length + ' filter' + (act.length > 1 ? 's' : '') + ' active · ' + Math.round((n / D.length) * 100) + '% of the database' : 'No filters applied';
   $('countBar').style.width = (n / D.length) * 100 + '%';
+  $('clearFilters').hidden = !act.length;
   S.table.page = 0;
 }
 function ruleSummary(fl) {
   const f = FB[fl.key];
-  if (f.t === 'cat') return fl.sel.size + ' of ' + (f.vals.length + 1) + ' selected';
-  if (f.t === 'num') return fl.min == null && fl.max == null ? 'no limits set' : (fl.min ?? '…') + ' to ' + (fl.max ?? '…');
-  return fl.q ? '“' + fl.q + '”' : 'type to search';
+  if (!isActive(fl)) return '';
+  if (f.t === 'cat') return fl.sel.size === 1 ? [...fl.sel][0] === NA ? 'not recorded' : [...fl.sel][0] : fl.sel.size + ' of ' + (f.vals.length + 1);
+  if (f.t === 'num') return (fl.min ?? '…') + ' – ' + (fl.max ?? '…');
+  return '“' + fl.q + '”';
 }
-function renderRules() {
-  const box = $('rules'); box.innerHTML = '';
-  S.filters.forEach((fl, idx) => {
-    const f = FB[fl.key]; const el = document.createElement('div'); el.className = 'rule';
-    el.innerHTML = '<header><span>' + esc(f.l) + '</span><span class="sub"></span><button aria-label="Remove filter" title="Remove filter">✕</button></header><div class="body"></div>';
-    const sub = el.querySelector('.sub'), body = el.querySelector('.body');
-    const upd = () => { sub.textContent = ruleSummary(fl); applyFilters(); renderActive(); };
-    el.querySelector('button').onclick = () => { S.filters.splice(idx, 1); renderRules(); applyFilters(); renderActive(); };
-    if (f.t === 'cat') {
-      const vals = f.vals.concat([NA]);
-      body.innerHTML = (vals.length > 12 ? '<input type="search" placeholder="Search values…" style="margin-bottom:4px">' : '') +
-        '<div><button class="link" data-a="all">Select all</button> · <button class="link" data-a="none">Select none</button></div><div class="checks"></div>';
-      const ch = body.querySelector('.checks');
-      vals.forEach((v) => {
-        const lb = document.createElement('label'), c = v === NA ? D.length - f.n : f.counts[v];
-        lb.innerHTML = '<input type="checkbox"><span>' + esc(v === NA ? '(not recorded)' : v) + '</span><em>' + c + '</em>';
-        const cb = lb.querySelector('input'); cb.checked = fl.sel.has(v);
-        cb.onchange = () => { cb.checked ? fl.sel.add(v) : fl.sel.delete(v); upd(); };
-        lb.dataset.v = (v === NA ? 'not recorded' : v).toLowerCase(); ch.appendChild(lb);
-      });
-      body.querySelectorAll('button.link').forEach((b) => (b.onclick = () => {
-        const all = b.dataset.a === 'all'; fl.sel = new Set(all ? vals : []);
-        ch.querySelectorAll('label').forEach((l) => (l.querySelector('input').checked = all)); upd();
-      }));
-      const s = body.querySelector('input[type=search]');
-      if (s) s.oninput = () => ch.querySelectorAll('label').forEach((l) => (l.style.display = l.dataset.v.includes(s.value.toLowerCase()) ? '' : 'none'));
-    } else if (f.t === 'num') {
-      body.innerHTML = '<div class="row2"><div><label class="f">From</label><input type="number" step="any" class="mn" placeholder="' + fmtN(f.min) + '"></div><div><label class="f">To</label><input type="number" step="any" class="mx" placeholder="' + fmtN(f.max) + '"></div></div>' +
-        '<div class="hint">' + f.n + ' incidents have a value (' + fmtN(f.min) + ' to ' + fmtN(f.max) + '). ' + f.miss + ' have none and are removed while a limit is set.</div>';
-      const mn = body.querySelector('.mn'), mx = body.querySelector('.mx');
-      mn.value = fl.min ?? ''; mx.value = fl.max ?? '';
-      mn.oninput = () => { fl.min = mn.value === '' ? null : +mn.value; upd(); };
-      mx.oninput = () => { fl.max = mx.value === '' ? null : +mx.value; upd(); };
-    } else {
-      body.innerHTML = '<input type="search" placeholder="Contains…">';
-      const q = body.querySelector('input'); q.value = fl.q; q.oninput = () => { fl.q = q.value; upd(); };
-    }
-    sub.textContent = ruleSummary(fl); box.appendChild(el);
+const CHEV = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const openKeys = new Set();
+function renderFilters() {
+  const box = $('filters'); box.innerHTML = '';
+  GROUPS.forEach((g) => {
+    const h = document.createElement('div'); h.className = 'fgroup'; h.textContent = g; h.dataset.g = g; box.appendChild(h);
+    F.filter((f) => f.g === g).forEach((f) => {
+      const fl = FL[f.k], row = document.createElement('div'); row.className = 'frow'; row.dataset.k = f.k; row.dataset.g = g; row.dataset.name = f.l.toLowerCase();
+      row.innerHTML = '<button class="fhead" aria-expanded="false"><span class="fl">' + esc(f.l) + '</span><span class="fbadge"></span>' + CHEV + '</button><div class="fbody" hidden></div>';
+      const head = row.querySelector('.fhead'), badge = row.querySelector('.fbadge'), body = row.querySelector('.fbody');
+      const mark = () => { badge.textContent = ruleSummary(fl); row.classList.toggle('active', isActive(fl)); };
+      const upd = () => { mark(); applyFilters(); renderActive(); };
+      const toggle = (on) => { row.classList.toggle('open', on); body.hidden = !on; head.setAttribute('aria-expanded', on); on ? openKeys.add(f.k) : openKeys.delete(f.k); };
+      head.onclick = () => toggle(body.hidden);
+      const reset = () => { Object.assign(fl, blankFilter(f)); renderFilters(); applyFilters(); renderActive(); };
+      if (f.t === 'cat') {
+        const vals = f.vals.concat([NA]);
+        body.innerHTML = (vals.length > 10 ? '<input type="search" placeholder="Search values…" style="margin:4px 0">' : '') +
+          '<div style="margin-top:4px"><button class="link" data-a="all">Select all</button> &nbsp;·&nbsp; <button class="link" data-a="none">Select none</button></div><div class="checks"></div>';
+        const ch = body.querySelector('.checks');
+        vals.forEach((v) => {
+          const lb = document.createElement('label'), c = v === NA ? D.length - f.n : f.counts[v];
+          lb.innerHTML = '<input type="checkbox"><span>' + esc(v === NA ? '(not recorded)' : v) + '</span><em>' + c + '</em>';
+          const cb = lb.querySelector('input'); cb.checked = fl.sel.has(v);
+          cb.onchange = () => { cb.checked ? fl.sel.add(v) : fl.sel.delete(v); upd(); };
+          lb.dataset.v = (v === NA ? 'not recorded' : v).toLowerCase(); ch.appendChild(lb);
+        });
+        body.querySelectorAll('button.link').forEach((b) => (b.onclick = () => {
+          const all = b.dataset.a === 'all'; fl.sel = new Set(all ? vals : []);
+          ch.querySelectorAll('input').forEach((i) => (i.checked = all)); upd();
+        }));
+        const s = body.querySelector('input[type=search]');
+        if (s) s.oninput = () => ch.querySelectorAll('label').forEach((l) => (l.style.display = l.dataset.v.includes(s.value.toLowerCase()) ? '' : 'none'));
+      } else if (f.t === 'num') {
+        body.innerHTML = '<div class="row2" style="margin-top:6px"><div><label class="f">From</label><input type="number" step="any" class="mn" placeholder="' + fmtN(f.min) + '"></div><div><label class="f">To</label><input type="number" step="any" class="mx" placeholder="' + fmtN(f.max) + '"></div></div>' +
+          '<div class="hint">' + f.n + ' incidents have a value (' + fmtN(f.min) + ' to ' + fmtN(f.max) + '). ' + f.miss + ' have none and are removed while a limit is set. <button class="link" data-r="1">Reset</button></div>';
+        const mn = body.querySelector('.mn'), mx = body.querySelector('.mx');
+        mn.value = fl.min ?? ''; mx.value = fl.max ?? '';
+        mn.oninput = () => { fl.min = mn.value === '' ? null : +mn.value; upd(); };
+        mx.oninput = () => { fl.max = mx.value === '' ? null : +mx.value; upd(); };
+        body.querySelector('[data-r]').onclick = reset;
+      } else {
+        body.innerHTML = '<input type="search" placeholder="Contains…" style="margin-top:6px">';
+        const q = body.querySelector('input'); q.value = fl.q; q.oninput = () => { fl.q = q.value; upd(); };
+      }
+      mark(); if (isActive(fl) || openKeys.has(f.k)) toggle(true);
+      box.appendChild(row);
+    });
   });
+  filterList();
 }
-function addFilter(key, preset) {
-  if (!key) return;
-  if (S.filters.some((x) => x.key === key)) { toast('You already have a filter on ' + FB[key].l); return; }
-  const f = FB[key], fl = { key, sel: null, min: null, max: null, q: '' };
-  if (f.t === 'cat') fl.sel = new Set(f.vals.concat([NA]));
-  if (preset) Object.assign(fl, preset);
-  S.filters.push(fl);
+function filterList() {
+  const q = $('fsearch').value.trim().toLowerCase(), vis = {};
+  document.querySelectorAll('#filters .frow').forEach((r) => { const ok = !q || r.dataset.name.includes(q); r.style.display = ok ? '' : 'none'; if (ok) vis[r.dataset.g] = 1; });
+  document.querySelectorAll('#filters .fgroup').forEach((g) => (g.style.display = vis[g.dataset.g] ? '' : 'none'));
 }
+function resetFilters() { F.forEach((f) => (FL[f.k] = blankFilter(f))); }
+function setFilter(key, preset) { Object.assign(FL[key], preset); }
 
 /* ---------- Binning / grouping ---------- */
 function niceW(range, k) {
@@ -280,7 +292,7 @@ function makeSeries(sf, recs) {
     const rank = (n) => (n === NR ? 1002 : n === OTH ? 1001 : sf.slot[n]);
     return rank(a) - rank(b);
   });
-  return names.map((n) => ({ name: n, test: (r) => key(r) === n, color: n === NR ? nrCol() : n === OTH ? otherCol() : pal[sf.slot[n]], slot: sf.slot[n] ?? 0 }));
+  return names.map((n) => ({ name: n, test: (r) => key(r) === n, color: ov(n, n === NR ? nrCol() : n === OTH ? otherCol() : pal[sf.slot[n]]), slot: sf.slot[n] ?? 0 }));
 }
 
 /* ---------- Charts ---------- */
@@ -330,7 +342,8 @@ function buildChart() {
     const miss = RF.length - recs.length;
     if (miss) notes.push(miss + ' of ' + RF.length + ' filtered incidents have no value for ' + fx.l + ' and/or ' + fy.l + ' and are not shown.');
     const sf = c.split ? FB[c.split] : null;
-    const series = sf ? makeSeries(sf, recs) : [{ name: isMap ? 'Incident' : fy.l + ' vs ' + fx.l, test: () => true, color: pal[0], slot: 0 }];
+    const series = sf ? makeSeries(sf, recs) : [{ name: isMap ? 'Incident' : fy.l + ' vs ' + fx.l, test: () => true, color: ov(isMap ? 'Incident' : fy.l + ' vs ' + fx.l, pal[0]), slot: 0 }];
+    S._cols = series.map((x) => ({ name: x.name, color: x.color }));
     const amtX = fx.int ? 0.7 : 0, amtY = fy.int ? 0.7 : 0; const jit = !isMap && c.jitter;
     const ds = series.map((s, i) => ({
       label: s.name, data: recs.filter(s.test).map((r) => ({ x: r[fx.k] + (jit ? jitter(r.id, amtX) : 0), y: r[fy.k] + (jit ? jitter(r.id + 7, amtY) : 0), r })),
@@ -392,7 +405,8 @@ function buildChart() {
   const labels = groups.map((g) => g.label);
   const mlab = measLabel(meas, c.vf);
   const unitSuffix = needsVf(meas) && FB[c.vf].unit ? '' : '';
-  const series = sf ? makeSeries(sf, rec0) : [{ name: mlab, test: () => true, color: pal[0], slot: 0 }];
+  const series = sf ? makeSeries(sf, rec0) : [{ name: mlab, test: () => true, color: ov(mlab, pal[0]), slot: 0 }];
+  S._cols = series.map((x) => ({ name: x.name, color: x.color }));
   const valueFmt = (v) => (meas === 'pct' || meas === 'fatal' ? fmtN(v) + '%' : fmtN(v));
   const model = { head: [ft.l].concat(series.map((s) => s.name)), rows: [] };
 
@@ -400,7 +414,8 @@ function buildChart() {
     const vals = groups.map((g) => measure(meas, g.recs, c.vf, rec0.length));
     const tot = vals.reduce((a, b) => a + (b || 0), 0);
     const slotOf = (g, i) => (g.isOther ? -1 : ft.t === 'cat' && ft.slot[g.key] !== undefined ? ft.slot[g.key] : i % 8);
-    const cols = groups.map((g, i) => (slotOf(g, i) < 0 || slotOf(g, i) > 7 ? otherCol() : pal[slotOf(g, i)]));
+    const cols = groups.map((g, i) => ov(g.label, slotOf(g, i) < 0 || slotOf(g, i) > 7 ? otherCol() : pal[slotOf(g, i)]));
+    S._cols = groups.map((g, i) => ({ name: g.label, color: cols[i] }));
     const pl = groups.map((g, i) => g.label + ' · ' + fmtN(vals[i]) + ' (' + Math.round((vals[i] / tot) * 100) + '%)');
     opts.scales = {}; opts.layout.padding = 8;
     opts.plugins.legend.position = 'right'; opts.plugins.legend.labels.generateLabels = undefined;
@@ -450,7 +465,7 @@ function buildChart() {
   return { cfg, notes, stats, title: c.title || ttl + (sf ? ', split by ' + sf.l.toLowerCase() : ''), n: rec0.length };
 }
 
-function renderChart() {
+function renderChart(skipColors) {
   const c = S.chart;
   const res = buildChart();
   if (chart) { chart.destroy(); chart = null; }
@@ -462,7 +477,10 @@ function renderChart() {
   Chart.defaults.color = css('--muted');
   res.cfg.options.plugins.title = { display: true, text: res.title, color: css('--ink'), font: { size: 15, weight: '650' }, padding: { bottom: 8 } };
   res.cfg.plugins = [valueLabels, bgPlugin];
+  if (S.pred && S.pred.revealed && S.pred.spec.kind === 'sketch' && S.pred.sig === sigOf() && !res.pie && res.cfg.data.labels) addSketchOverlay(res.cfg);
+  if (!skipColors) renderColorBox();
   chart = new Chart($('chart'), res.cfg);
+  if (S.pred && S.pred.revealed && S.pred.spec.kind === 'sketch' && !$('predResult').hidden && S.pred.sig === sigOf()) renderPredResult();
   $('chart').setAttribute('aria-label', res.title);
   $('chartStats').innerHTML = res.stats || '';
   $('chartNote').textContent = 'Graphing ' + res.n.toLocaleString() + ' of ' + RF.length.toLocaleString() + ' filtered incidents (' + D.length.toLocaleString() + ' in the full database). ' + res.notes.join(' ');
@@ -519,33 +537,203 @@ function syncControls() {
   ['trend', 'stack', 'horiz', 'jitter', 'vals'].forEach((k) => ($('c-' + k).checked = !!c[k]));
   if (t === 'map' && !c.split) { c.split = 'outcome'; $('c-split').value = 'outcome'; }
 }
+/* ---------- Colours ---------- */
+const SCHEMES = {
+  ocean: { n: 'Ocean', c: ['#0b6e99', '#2bb3c0', '#7fd1b9', '#f2c14e', '#f78154', '#4d5061', '#5fa8d3', '#b8c0ff'] },
+  sunset: { n: 'Sunset', c: ['#d1495b', '#edae49', '#00798c', '#30638e', '#66a182', '#8d6a9f', '#e07a5f', '#3d405b'] },
+  cvd: { n: 'Colour-blind safe', c: ['#0072b2', '#e69f00', '#009e73', '#d55e00', '#cc79a7', '#56b4e9', '#f0e442', '#999999'] },
+  pastel: { n: 'Pastel', c: ['#6baed6', '#ffb347', '#8fd694', '#ff9aa2', '#b8a1d9', '#7fd1d6', '#e8d36a', '#b0b7c3'] },
+  mono: { n: 'Blues', c: ['#08306b', '#2171b5', '#6baed6', '#c6dbef', '#4292c6', '#9ecae1', '#084594', '#deebf7'] },
+  bold: { n: 'Bold', c: ['#e63946', '#1d3557', '#2a9d8f', '#f4a261', '#7b2cbf', '#118ab2', '#ffb703', '#06d6a0'] },
+};
+function renderColorBox() {
+  const cur = S.colors.scheme;
+  let h = '<div class="schemes" style="margin-top:12px">' + ['default'].concat(Object.keys(SCHEMES)).map((k) => {
+    const cols = k === 'default' ? (isDark() ? PAL.dark : PAL.light) : SCHEMES[k].c;
+    return '<button class="scheme" data-s="' + k + '" aria-pressed="' + (k === cur) + '">' + (k === 'default' ? 'Default' : SCHEMES[k].n) + '<i>' + cols.slice(0, 6).map((c) => '<b style="background:' + c + '"></b>').join('') + '</i></button>';
+  }).join('') + '</div>';
+  h += '<div class="swatches">' + (S._cols || []).map((s) => '<label class="sw" title="Pick a colour"><input type="color" data-n="' + esc(s.name) + '" value="' + s.color + '"><span>' + esc(s.name) + '</span></label>').join('') + '</div>' +
+    '<p class="hint">Choose a colour set, or click a swatch to pick your own colour for one series. <button class="link" id="resetColors">Reset colours</button></p>';
+  $('colorInner').innerHTML = h;
+  $('colorInner').querySelectorAll('.scheme').forEach((b) => (b.onclick = () => { S.colors.scheme = b.dataset.s; S.colors.over = {}; renderChart(); }));
+  $('colorInner').querySelectorAll('input[type=color]').forEach((i) => (i.oninput = () => { S.colors.over[i.dataset.n] = i.value; renderChart(true); }));
+  $('resetColors').onclick = () => { S.colors = { scheme: 'default', over: {} }; renderChart(); };
+}
+
+/* ---------- Predictions + investigation ideas ---------- */
+const corr = (a, b) => { const p = D.filter((r) => r[a] != null && r[b] != null); const g = regress(p.map((r) => r[a]), p.map((r) => r[b])); return g ? g.r : 0; };
+const itemVal = (sp, it) => measure(sp.m, D.filter((r) => r[sp.field] === it), sp.vf, D.length);
+const ACT6 = ['Swimming', 'Board sports', 'Spearfishing', 'Snorkelling', 'Diving', 'Fishing'];
 const PRESETS = [
-  { t: 'Which sharks are involved most?', q: 'Predict the top 3 species first.', c: { type: 'pie', x: 'species', measure: 'count', top: 7 } },
-  { t: 'Are incidents becoming more common?', q: 'Why might this be, besides sharks?', c: { type: 'line', x: 'decade', measure: 'count', trend: true, split: '' } },
-  { t: 'Which activity leads to most incidents?', q: 'Is the most common activity the riskiest?', c: { type: 'column', x: 'activity', measure: 'count', sort: 'desc', horiz: true, split: '' } },
-  { t: 'Which activity is most often fatal?', q: 'Compare with the count graph. Check sample sizes!', c: { type: 'column', x: 'activity', measure: 'fatal', sort: 'desc', horiz: true, split: '' } },
-  { t: 'Which months are busiest, by state?', q: 'Does the season shift between states?', c: { type: 'column', x: 'month', measure: 'count', split: 'state', stack: true } },
-  { t: 'Do bigger sharks cause worse outcomes?', q: 'Predict first: fatal, injured or uninjured?', c: { type: 'column', x: 'outcome', measure: 'avg', vf: 'length', split: '' } },
-  { t: 'Does victim age relate to shark length?', q: 'Add a trendline. How strong is r?', c: { type: 'scatter', x: 'age', y: 'length', trend: true, split: '' } },
-  { t: 'How far from shore do incidents happen?', q: 'Predict the shape of the distribution.', c: { type: 'hist', x: 'dist_shore', measure: 'count', bin: 50, split: '' } },
-  { t: 'What time of day are incidents?', q: 'Is the pattern caused by sharks or people?', c: { type: 'column', x: 'hour', measure: 'count', split: '' }, },
-  { t: 'Victim age, by gender', q: 'Compare the two distributions.', c: { type: 'hist', x: 'age', measure: 'count', bin: 5, split: 'gender', stack: false } },
-  { t: 'Provoked vs unprovoked outcomes', q: 'Which is more likely to be fatal?', c: { type: 'column', x: 'provoked', measure: 'count', split: 'outcome', stack: true } },
-  { t: 'Map of every incident', q: 'Where are the hot spots? Why?', c: { type: 'map', split: 'outcome' } },
-  { t: 'Fatal incidents over time', q: 'Has the fatal share changed?', c: { type: 'line', x: 'decade', measure: 'count', trend: true, split: '' }, f: [{ key: 'outcome', sel: ['Fatal'] }] },
-  { t: 'Water temperature and shark length', q: 'Warning: very few records. What does that mean?', c: { type: 'scatter', x: 'water_temp', y: 'length', trend: true, split: '' } },
+  { t: 'Which sharks are involved most?', q: 'Rank six species', c: { type: 'pie', x: 'species', measure: 'count', top: 7 },
+    pred: { kind: 'rank', field: 'species', m: 'count', items: ['White shark', 'Tiger shark', 'Bull shark', 'Wobbegong', 'Whaler shark', 'Bronze whaler shark'], hi: 'Most incidents', lo: 'Fewest incidents', ask: 'Rank these sharks from the MOST to the FEWEST recorded incidents. Drag the cards, or use the arrows.' } },
+  { t: 'Are incidents becoming more common?', q: 'Sketch the trend', c: { type: 'line', x: 'decade', measure: 'count', trend: true },
+    pred: { kind: 'sketch', pts: 9, xlab: 'Earliest records → most recent', ylab: 'Few → many incidents', ask: 'Sketch how the number of incidents per decade has changed since records began. Click and drag across the graph to draw your line.' } },
+  { t: 'Which activity leads to most incidents?', q: 'Rank six activities', c: { type: 'column', x: 'activity', measure: 'count', sort: 'desc', horiz: true },
+    pred: { kind: 'rank', field: 'activity', m: 'count', items: ACT6, hi: 'Most incidents', lo: 'Fewest incidents', ask: 'Rank these activities from the MOST to the FEWEST recorded shark incidents.' } },
+  { t: 'Which activity is most often fatal?', q: 'Rank by fatality rate', c: { type: 'column', x: 'activity', measure: 'fatal', sort: 'desc', horiz: true },
+    pred: { kind: 'rank', field: 'activity', m: 'fatal', items: ACT6, hi: 'Highest % fatal', lo: 'Lowest % fatal', ask: 'Rank these activities by how often an incident ends in a death (the percentage of incidents that were fatal, not the number).' } },
+  { t: 'Which months are busiest?', q: 'Sketch the year', c: { type: 'column', x: 'month', measure: 'count', split: 'state', stack: true },
+    pred: { kind: 'sketch', pts: 12, xlab: 'Start of year → end of year', ylab: 'Few → many incidents', ask: 'Sketch how the number of incidents changes across the 12 months of the year (all states together). Click and drag to draw.' } },
+  { t: 'Do bigger sharks cause worse outcomes?', q: 'Rank by average shark size', c: { type: 'column', x: 'outcome', measure: 'avg', vf: 'length', sort: 'natural' },
+    pred: { kind: 'rank', field: 'outcome', m: 'avg', vf: 'length', items: ['Fatal', 'Injured', 'Uninjured'], hi: 'Biggest sharks', lo: 'Smallest sharks', ask: 'Rank the three outcomes by the AVERAGE size of the shark involved.' } },
+  { t: 'Does victim age relate to shark length?', q: 'Predict the correlation', c: { type: 'scatter', x: 'age', y: 'length', trend: true },
+    pred: { kind: 'sliders', ask: 'Is the age of the victim related to the length of the shark? Set the correlation you expect between the two.', sliders: [{ label: 'Correlation (r) between victim age and shark length', min: -1, max: 1, step: 0.05, start: 0, dec: 2, lo: '−1 · bigger sharks bite younger people', mid: '0 · no relationship', hi: '+1 · bigger sharks bite older people', actual: () => corr('age', 'length') }] } },
+  { t: 'How far from shore do incidents happen?', q: 'Sketch the shape', c: { type: 'hist', x: 'dist_shore', measure: 'count', bin: 50 },
+    pred: { kind: 'sketch', pts: 8, xlab: 'Close to shore → far from shore', ylab: 'Few → many incidents', ask: 'Sketch the shape of the distribution: how many incidents happen at each distance from shore? Click and drag to draw.' } },
+  { t: 'What time of day do incidents happen?', q: 'Sketch the day', c: { type: 'column', x: 'hour', measure: 'count' },
+    pred: { kind: 'sketch', pts: 12, xlab: 'Midnight → following midnight', ylab: 'Few → many incidents', ask: 'Sketch how the number of incidents changes over the 24 hours of the day. Click and drag to draw.' } },
+  { t: 'Victim age, by gender', q: 'Predict the split', c: { type: 'hist', x: 'age', measure: 'count', bin: 5, split: 'gender', stack: false },
+    pred: { kind: 'sliders', ask: 'Of the victims whose age and gender were recorded, what percentage were male?', sliders: [{ label: 'Percentage of victims who were male', min: 0, max: 100, step: 1, start: 50, unit: '%', dec: 0, lo: '0% (all female)', hi: '100% (all male)', actual: () => { const p = D.filter((r) => r.age != null && r.gender); return (p.filter((r) => r.gender === 'Male').length / p.length) * 100; } }] } },
+  { t: 'Provoked vs unprovoked outcomes', q: 'Predict two percentages', c: { type: 'column', x: 'provoked', measure: 'count', split: 'outcome', stack: true },
+    pred: { kind: 'sliders', ask: 'Of the incidents with a known outcome, what percentage ended in a death? Make a prediction for each type of incident.', sliders: [
+      { label: 'Unprovoked incidents that were fatal', min: 0, max: 100, step: 1, start: 50, unit: '%', dec: 0, lo: '0%', hi: '100%', actual: () => itemVal({ field: 'provoked', m: 'fatal' }, 'Unprovoked') },
+      { label: 'Provoked incidents that were fatal', min: 0, max: 100, step: 1, start: 50, unit: '%', dec: 0, lo: '0%', hi: '100%', actual: () => itemVal({ field: 'provoked', m: 'fatal' }, 'Provoked') }] } },
+  { t: 'Where do incidents happen? (map)', q: 'Rank the states', c: { type: 'map', split: 'outcome' },
+    pred: { kind: 'rank', field: 'state', m: 'count', items: ['NSW', 'QLD', 'WA', 'SA', 'VIC', 'TAS', 'NT'], hi: 'Most incidents', lo: 'Fewest incidents', ask: 'Rank the states and territories from the MOST to the FEWEST recorded incidents.' } },
+  { t: 'Is the fatality rate changing over time?', q: 'Predict two eras', c: { type: 'line', x: 'decade', measure: 'fatal', trend: true },
+    pred: { kind: 'sliders', ask: 'What percentage of incidents (with a known outcome) were fatal in each era?', sliders: [
+      { label: 'Fatal incidents, 1900 to 1949', min: 0, max: 100, step: 1, start: 50, unit: '%', dec: 0, lo: '0%', hi: '100%', actual: () => measure('fatal', D.filter((r) => r.year >= 1900 && r.year <= 1949), null, 0) },
+      { label: 'Fatal incidents, 2000 to 2026', min: 0, max: 100, step: 1, start: 50, unit: '%', dec: 0, lo: '0%', hi: '100%', actual: () => measure('fatal', D.filter((r) => r.year >= 2000), null, 0) }] } },
+  { t: 'Water temperature and shark length', q: 'Predict the correlation', c: { type: 'scatter', x: 'water_temp', y: 'length', trend: true },
+    pred: { kind: 'sliders', ask: 'Do warmer waters have longer sharks involved? Set the correlation you expect. (Careful: few incidents have a recorded water temperature.)', sliders: [{ label: 'Correlation (r) between water temperature and shark length', min: -1, max: 1, step: 0.05, start: 0, dec: 2, lo: '−1 · warmer = shorter sharks', mid: '0 · no relationship', hi: '+1 · warmer = longer sharks', actual: () => corr('water_temp', 'length') }] } },
 ];
+const KIND = { rank: 'Ranking', sketch: 'Sketch', sliders: 'Slider' };
+const shuffle = (a, avoid) => { let b; do { b = a.slice().sort(() => Math.random() - 0.5); } while (avoid && b.join() === avoid.join() && a.length > 1); return b; };
+const rankActual = (sp) => sp.items.slice().sort((a, b) => (itemVal(sp, b) ?? -1) - (itemVal(sp, a) ?? -1));
+const rankFmt = (sp, v) => (v == null ? '–' : sp.m === 'fatal' ? fmtN(v) + '%' : sp.m === 'avg' ? fmtN(v) + ' m' : fmtN(v));
+function newPredState(sp) {
+  if (sp.kind === 'rank') return { order: shuffle(sp.items, rankActual(sp)), touched: false };
+  if (sp.kind === 'sliders') return { vals: sp.sliders.map((s) => s.start), touched: sp.sliders.map(() => false) };
+  return { ys: Array(sp.pts).fill(0.5), moved: new Set() };
+}
+const sigOf = () => JSON.stringify([S.chart.type, S.chart.x, S.chart.measure]);
+
 function setupPresets() {
   const g = $('presetGrid');
-  PRESETS.forEach((p) => {
-    const b = document.createElement('button'); b.className = 'preset'; b.innerHTML = '<b>' + esc(p.t) + '</b><span>' + esc(p.q) + '</span>';
-    b.onclick = () => {
-      S.filters = []; (p.f || []).forEach((x) => addFilter(x.key, { sel: new Set(x.sel) }));
-      Object.assign(S.chart, { trend: false, stack: true, horiz: false, title: '', bin: '', vals: true, split: '' }, p.c);
-      S.chart.sort = p.c.sort || 'desc'; renderRules(); applyFilters(); syncControls(); renderChart(); $('chartWrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    };
-    g.appendChild(b);
+  PRESETS.forEach((p, i) => {
+    const b = document.createElement('button'); b.className = 'preset';
+    b.innerHTML = '<span class="tag">🔮 ' + KIND[p.pred.kind] + ' prediction</span><b>' + esc(p.t) + '</b><span class="q">' + esc(p.q) + '</span>';
+    b.onclick = () => startPreset(i); g.appendChild(b);
   });
+}
+function startPreset(i) {
+  const p = PRESETS[i];
+  resetFilters(); (p.f || []).forEach((x) => setFilter(x.key, { sel: new Set(x.sel) }));
+  Object.assign(S.chart, { trend: false, stack: true, horiz: false, title: '', bin: '', vals: true, split: '', sort: p.c.sort || 'desc' }, p.c);
+  S.colors.over = {};
+  S.pred = { i, spec: p.pred, revealed: false, sig: sigOf(), st: newPredState(p.pred) };
+  $('starters').open = false;
+  renderFilters(); applyFilters();
+  $('chartArea').hidden = true; $('predResult').hidden = true; $('predCard').hidden = false;
+  renderPred();
+  $('predCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderPred() {
+  const P = S.pred, sp = P.spec, st = P.st, host = $('predCard');
+  host.innerHTML = '<div class="eyebrow">🔮 Predict first</div><h3>' + esc(PRESETS[P.i].t) + '</h3><p class="ask">' + esc(sp.ask) + '</p><div id="predWidget"></div>' +
+    '<div class="revealbar"><button class="btn cta" id="revealBtn" disabled>Lock in my prediction and reveal the data</button><p class="hint" id="revealHint"></p></div>';
+  const w = $('predWidget'), btn = $('revealBtn');
+  const ready = () => {
+    const ok = sp.kind === 'rank' ? st.touched : sp.kind === 'sliders' ? st.touched.every(Boolean) : st.moved.size >= Math.ceil(sp.pts / 2);
+    btn.disabled = !ok;
+    $('revealHint').textContent = ok ? 'Once you reveal, you cannot change this prediction (but you can start again).' : sp.kind === 'rank' ? 'Rearrange the cards to make your ranking first.' : sp.kind === 'sliders' ? 'Move every slider to make your prediction.' : 'Draw your line across most of the graph first.';
+  };
+  if (sp.kind === 'rank') rankWidget(w, sp, st, ready); else if (sp.kind === 'sliders') sliderWidget(w, sp, st, ready); else sketchWidget(w, sp, st, ready);
+  ready();
+  btn.onclick = () => {
+    P.revealed = true; $('predCard').hidden = true; $('chartArea').hidden = false;
+    syncControls(); renderChart(); renderPredResult(); $('predResult').hidden = false;
+    $('predResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+}
+function rankWidget(w, sp, st, ready) {
+  w.innerHTML = '<div class="rankwrap"><div class="rankends"><span>▲ ' + esc(sp.hi) + '</span><span>▼ ' + esc(sp.lo) + '</span></div><ol class="rank" style="flex:1"></ol></div>';
+  const ol = w.querySelector('ol');
+  const num = () => [...ol.children].forEach((li, i) => (li.querySelector('.no').textContent = i + 1));
+  const sync = () => { st.order = [...ol.children].map((li) => li.dataset.it); num(); };
+  st.order.forEach((it) => {
+    const li = document.createElement('li'); li.dataset.it = it;
+    li.innerHTML = '<span class="no"></span><span class="grip">⋮⋮</span><span class="lbl">' + esc(it) + '</span><span class="mv"><button data-d="-1" aria-label="Move up">▲</button><button data-d="1" aria-label="Move down">▼</button></span>';
+    li.querySelectorAll('button').forEach((b) => (b.onclick = () => {
+      const d = +b.dataset.d, sib = d < 0 ? li.previousElementSibling : li.nextElementSibling; if (!sib) return;
+      d < 0 ? ol.insertBefore(li, sib) : ol.insertBefore(sib, li); st.touched = true; sync(); ready();
+    }));
+    li.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; li.setPointerCapture(e.pointerId); li.classList.add('drag'); li._start = st.order.join(); });
+    li.addEventListener('pointermove', (e) => {
+      if (!li.classList.contains('drag')) return;
+      const nx = li.nextElementSibling, pv = li.previousElementSibling, mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+      if (nx && e.clientY > mid(nx)) ol.insertBefore(nx, li); else if (pv && e.clientY < mid(pv)) ol.insertBefore(pv, li.nextSibling);
+    });
+    const end = () => { if (!li.classList.contains('drag')) return; li.classList.remove('drag'); const before = li._start; sync(); if (st.order.join() !== before) st.touched = true; ready(); };
+    li.addEventListener('pointerup', end); li.addEventListener('pointercancel', end);
+    ol.appendChild(li);
+  });
+  num();
+}
+function sliderWidget(w, sp, st, ready) {
+  w.innerHTML = sp.sliders.map((s, i) => '<div class="slidebox"><div class="lab">' + esc(s.label) + '</div><div class="val" id="sv' + i + '">?</div>' +
+    '<input type="range" id="sl' + i + '" min="' + s.min + '" max="' + s.max + '" step="' + s.step + '" value="' + s.start + '" aria-label="' + esc(s.label) + '">' +
+    '<div class="ends"><span>' + esc(s.lo) + '</span>' + (s.mid ? '<span>' + esc(s.mid) + '</span>' : '') + '<span>' + esc(s.hi) + '</span></div></div>').join('');
+  sp.sliders.forEach((s, i) => {
+    const el = $('sl' + i), out = $('sv' + i);
+    if (st.touched[i]) out.textContent = (+el.value).toFixed(s.dec) + (s.unit || '');
+    el.oninput = () => { st.vals[i] = +el.value; st.touched[i] = true; out.textContent = (+el.value).toFixed(s.dec) + (s.unit || ''); ready(); };
+  });
+}
+function sketchWidget(w, sp, st, ready) {
+  const W = 420, H = 250, L = 46, R = 406, T = 16, B = 206, n = sp.pts;
+  const X = (i) => L + ((R - L) * i) / (n - 1), Y = (v) => B - v * (B - T);
+  w.innerHTML = '<svg class="sketch" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Drawing area for your prediction">' +
+    [0.25, 0.5, 0.75, 1].map((v) => '<line class="gl" x1="' + L + '" x2="' + R + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>').join('') +
+    '<path class="ax" d="M' + L + ' ' + (T - 6) + 'V' + B + 'H' + (R + 6) + 'M' + (L - 4) + ' ' + (T + 2) + 'L' + L + ' ' + (T - 6) + 'L' + (L + 4) + ' ' + (T + 2) + 'M' + (R - 2) + ' ' + (B - 4) + 'L' + (R + 6) + ' ' + B + 'L' + (R - 2) + ' ' + (B + 4) + '"/>' +
+    '<text x="' + (L + R) / 2 + '" y="' + (H - 12) + '" text-anchor="middle">' + esc(sp.xlab) + '</text>' +
+    '<text transform="translate(13 ' + (T + B) / 2 + ') rotate(-90)" text-anchor="middle">' + esc(sp.ylab) + '</text>' +
+    '<polyline class="ln" points=""/>' + Array.from({ length: n }, () => '<circle r="7" style="pointer-events:none"/>').join('') + '</svg>' +
+    '<p class="hint">Click and drag across the graph to draw your prediction. <button class="link" id="skReset">Start again</button></p>';
+  const svg = w.querySelector('svg'), ln = svg.querySelector('polyline'), cs = [...svg.querySelectorAll('circle')];
+  const draw = () => { ln.setAttribute('points', st.ys.map((v, i) => X(i) + ',' + Y(v)).join(' ')); cs.forEach((c, i) => { c.setAttribute('cx', X(i)); c.setAttribute('cy', Y(st.ys[i])); c.classList.toggle('on', st.moved.has(i)); }); };
+  const pt = (e) => { const r = svg.getBoundingClientRect(), x = ((e.clientX - r.left) * W) / r.width, y = ((e.clientY - r.top) * H) / r.height; const i = Math.max(0, Math.min(n - 1, Math.round(((x - L) / (R - L)) * (n - 1)))); st.ys[i] = Math.max(0, Math.min(1, (B - y) / (B - T))); st.moved.add(i); draw(); ready(); };
+  let down = false;
+  svg.addEventListener('pointerdown', (e) => { down = true; svg.setPointerCapture(e.pointerId); pt(e); });
+  svg.addEventListener('pointermove', (e) => { if (down) pt(e); });
+  svg.addEventListener('pointerup', () => (down = false)); svg.addEventListener('pointercancel', () => (down = false));
+  $('skReset').onclick = () => { st.ys.fill(0.5); st.moved.clear(); draw(); ready(); };
+  draw();
+}
+function renderPredResult() {
+  const P = S.pred, sp = P.spec, st = P.st, el = $('predResult'); let h = '<div class="res"><div class="eyebrow" style="font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">Your prediction vs the data</div>';
+  if (sp.kind === 'rank') {
+    const act = rankActual(sp); let exact = 0, big = null;
+    act.forEach((it, i) => { const yr = st.order.indexOf(it); if (yr === i) exact++; const d = Math.abs(yr - i); if (!big || d > big.d) big = { it, d, yr: yr + 1, ar: i + 1 }; });
+    h += '<div class="banner">' + exact + ' of ' + act.length + ' in exactly the right place' + (exact === act.length ? ' 🎯 perfect!' : exact >= act.length / 2 ? ' · good instincts' : ' · the data surprised you') + '</div>';
+    h += '<div class="tblwrap" style="max-height:none"><table class="t"><thead><tr><th class="nosort n">Actual rank</th><th class="nosort">' + esc(FB[sp.field].l) + '</th><th class="nosort n">Actual value</th><th class="nosort n">Your rank</th></tr></thead><tbody>' +
+      act.map((it, i) => { const yr = st.order.indexOf(it) + 1; return '<tr><td class="n">' + (i + 1) + '</td><td>' + esc(it) + '</td><td class="n"><b>' + rankFmt(sp, itemVal(sp, it)) + '</b></td><td class="n ' + (yr === i + 1 ? 'ok' : 'off') + '">' + yr + (yr === i + 1 ? ' ✓' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    if (big && big.d > 0) h += '<p class="note">Biggest surprise: <b>' + esc(big.it) + '</b>. You ranked it ' + big.yr + ', but it is actually number ' + big.ar + '.</p>';
+  } else if (sp.kind === 'sliders') {
+    h += sp.sliders.map((s, i) => {
+      const a = s.actual(), y = st.vals[i], pos = (v) => Math.max(0, Math.min(100, ((v - s.min) / (s.max - s.min)) * 100)), diff = Math.abs(a - y), tol = (s.max - s.min) * 0.1;
+      const f = (v) => v.toFixed(s.dec) + (s.unit || '');
+      return '<div><div style="font-weight:600">' + esc(s.label) + '</div><div class="track"><div class="mk you" style="left:' + pos(y) + '%">You: ' + f(y) + '<i></i></div><div class="mk act" style="left:' + pos(a) + '%;top:17px"><i style="margin-top:-6px"></i><span style="display:block;margin-top:2px;color:var(--accent)">Actual: ' + f(a) + '</span></div></div>' +
+        '<div style="margin-top:22px" class="' + (diff <= tol ? 'ok' : 'off') + '">' + (diff <= tol ? '✓ Very close' : diff <= tol * 3 ? 'Fairly close' : 'Quite different') + ' · off by ' + f(diff) + '</div></div>';
+    }).join('');
+  } else {
+    const m = P.match;
+    h += '<div class="banner">' + (m == null ? '' : m >= 0.85 ? 'Your sketch has almost the same shape as the data' : m >= 0.5 ? 'Your sketch follows part of the real pattern' : m >= 0 ? 'Your sketch is quite different from the real pattern' : 'Your sketch is close to the opposite of the real pattern') + '</div>' +
+      '<p class="note" style="margin:0">Shape match: <b>r = ' + (m == null ? '–' : m.toFixed(2)) + '</b>. The dotted orange line on the graph is your prediction, scaled to the same height. Only the shape counts.</p>';
+  }
+  h += '<p class="note" style="margin-top:6px">Were you surprised? Think about <i>why</i>, then use the controls below to dig deeper: add a filter, change the graph, or split by another field.</p><div><button class="btn ghost" id="predAgain">↺ Try this prediction again</button></div></div>';
+  el.innerHTML = h;
+  $('predAgain').onclick = () => { P.revealed = false; P.st = newPredState(sp); $('chartArea').hidden = true; $('predResult').hidden = true; $('predCard').hidden = false; renderPred(); $('predCard').scrollIntoView({ behavior: 'smooth' }); };
+}
+function addSketchOverlay(cfg) {
+  const P = S.pred, st = P.st, ds = cfg.data.datasets.filter((d) => !d.isTrend), G = cfg.data.labels.length;
+  const tot = Array.from({ length: G }, (_, j) => ds.reduce((a, d) => a + (d.data[j] || 0), 0)), max = Math.max(...tot) || 1;
+  const n = st.ys.length, at = (t) => { const p = t * (n - 1), a = Math.floor(p), b = Math.min(n - 1, a + 1); return st.ys[a] + (st.ys[b] - st.ys[a]) * (p - a); };
+  const mine = Array.from({ length: G }, (_, j) => at(G > 1 ? j / (G - 1) : 0));
+  const rg = regress(mine, tot); P.match = rg ? rg.r : null;
+  cfg.data.datasets.push({ label: 'Your prediction (shape only)', type: 'line', data: mine.map((v) => +(v * max).toFixed(3)), borderColor: css('--cta'), backgroundColor: css('--cta'), borderWidth: 3, borderDash: [2, 5], pointRadius: 3, isTrend: true, stack: 'trend', order: -2 });
+  cfg.options.plugins.legend.display = true;
 }
 
 /* ---------- Table ---------- */
@@ -693,12 +881,12 @@ function setTab(t) {
   renderActive();
 }
 function renderActive() {
-  if (S.tab === 'chart') renderChart();
+  if (S.tab === 'chart') { if (!$('chartArea').hidden) renderChart(); }
   else if (S.tab === 'table') renderTable();
   else if (S.tab === 'summary') { renderPivot(); renderProfile(); }
 }
 function saveLink() {
-  const o = { c: S.chart, t: S.table.cols, f: S.filters.map((f) => ({ k: f.key, s: f.sel ? [...f.sel] : null, mn: f.min, mx: f.max, q: f.q })), tab: S.tab };
+  const o = { c: S.chart, t: S.table.cols, col: S.colors, f: F.map((f) => FL[f.k]).filter(isActive).map((f) => ({ k: f.key, s: f.sel ? [...f.sel] : null, mn: f.min, mx: f.max, q: f.q })), tab: S.tab };
   return location.href.split('#')[0] + '#v1=' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
 }
 function loadLink() {
@@ -706,23 +894,24 @@ function loadLink() {
   try {
     const o = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     Object.assign(S.chart, o.c); if (o.t) S.table.cols = o.t.filter((k) => FB[k]);
-    S.filters = []; (o.f || []).filter((f) => FB[f.k]).forEach((f) => addFilter(f.k, { sel: f.s ? new Set(f.s) : null, min: f.mn, max: f.mx, q: f.q || '' }));
+    if (o.col) S.colors = { scheme: SCHEMES[o.col.scheme] ? o.col.scheme : 'default', over: o.col.over || {} };
+    (o.f || []).filter((f) => FB[f.k]).forEach((f) => setFilter(f.k, { sel: f.s ? new Set(f.s) : null, min: f.mn, max: f.mx, q: f.q || '' }));
     if (o.tab) S.tab = o.tab;
   } catch (e) { /* ignore bad link */ }
 }
 function init() {
   loadLink();
-  fieldOpts($('addFilter'), () => true, 'Choose a field…', ''); $('addFilter').onchange = () => { addFilter($('addFilter').value); $('addFilter').value = ''; renderRules(); applyFilters(); renderActive(); };
-  $('clearFilters').onclick = () => { S.filters = []; renderRules(); applyFilters(); renderActive(); };
+  $('fsearch').oninput = filterList;
+  $('clearFilters').onclick = () => { resetFilters(); renderFilters(); applyFilters(); renderActive(); };
   $('filtToggle').onclick = () => $('side').classList.toggle('closed');
-  if (matchMedia('(max-width:900px)').matches) $('side').classList.add('closed');
+  if (matchMedia('(max-width:980px)').matches) $('side').classList.add('closed');
   document.querySelectorAll('nav.tabs button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
   $('themeBtn').onclick = () => { document.documentElement.dataset.theme = isDark() ? 'light' : 'dark'; try { localStorage.setItem('shark_theme', document.documentElement.dataset.theme); } catch (e) { } renderActive(); };
   try { const th = localStorage.getItem('shark_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderActive());
   $('copyLink').onclick = () => { const u = saveLink(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast('Link copied. It restores your filters and graph.'), () => { history.replaceState(null, '', u.slice(u.indexOf('#'))); toast('Link is now in the address bar. Copy it from there.'); }); };
   setupChartControls(); setupPresets(); setupTable(); setupSummary(); setupAbout();
-  renderRules(); applyFilters(); setTab(S.tab);
+  renderFilters(); applyFilters(); setTab(S.tab);
   let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (S.tab === 'chart' && S.chart.type === 'map') renderChart(); }, 200); });
 }
 init();
