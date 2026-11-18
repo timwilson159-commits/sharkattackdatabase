@@ -644,8 +644,9 @@ function renderPred() {
   if (sp.kind === 'rank') rankWidget(w, sp, st, ready); else if (sp.kind === 'sliders') sliderWidget(w, sp, st, ready); else sketchWidget(w, sp, st, ready);
   ready();
   btn.onclick = () => {
-    P.revealed = true; $('predCard').hidden = true; gate(false); $('investGrid').hidden = false;
-    renderPredResult(); $('predResult').hidden = false; setTab('chart'); window.scrollTo(0, 0);
+    P.revealed = true; $('predCard').hidden = true; gate(false); $('investGrid').hidden = true;
+    if (sp.kind === 'sketch') { const bc = buildChart(); if (bc.cfg && bc.cfg.data.labels) addSketchOverlay(bc.cfg); }
+    renderPredResult(); $('predResult').hidden = false; setTab('invest'); window.scrollTo(0, 0);
   };
 }
 function rankWidget(w, sp, st, ready) {
@@ -723,8 +724,10 @@ function renderPredResult() {
     h += '<div class="banner">' + (m == null ? '' : m >= 0.85 ? 'Your sketch has almost the same shape as the data' : m >= 0.5 ? 'Your sketch follows part of the real pattern' : m >= 0 ? 'Your sketch is quite different from the real pattern' : 'Your sketch is close to the opposite of the real pattern') + '</div>' +
       '<p class="note" style="margin:0">Shape match: <b>r = ' + (m == null ? '–' : m.toFixed(2)) + '</b>. The dotted ' + (P.colour ? P.colour.name : '') + ' line with diamond markers is your prediction, scaled to the same height. Only the shape counts.</p>';
   }
-  h += '<p class="note" style="margin-top:6px">Were you surprised? Think about <i>why</i>, then use the controls below to dig deeper: add a filter, change the graph, or split by another field.</p><div><button class="btn ghost" id="predAgain">↺ Try this prediction again</button></div></div>';
+  h += '<p class="note" style="margin-top:6px">Were you surprised? Think about <i>why</i>. Open the graph to dig deeper: add a filter, change the graph type, or split by another field.</p><div class="actions" style="margin-top:4px"><button class="btn" id="predGraph">📊 View the graph and explore</button><button class="btn ghost" id="predAgain">↺ Try this prediction again</button><button class="btn ghost" id="predAll">← All investigations</button></div></div>';
   el.innerHTML = h;
+  $('predGraph').onclick = () => { setTab('chart'); window.scrollTo(0, 0); };
+  $('predAll').onclick = () => { $('predResult').hidden = true; $('investGrid').hidden = false; window.scrollTo(0, 0); };
   $('predAgain').onclick = () => { P.revealed = false; P.st = newPredState(sp); gate(true); $('predResult').hidden = true; $('predCard').hidden = false; $('investGrid').hidden = true; renderPred(); setTab('invest'); window.scrollTo(0, 0); };
 }
 const PRED_CANDS = [['hot pink', '#ff1fb4'], ['electric yellow', '#ffd400'], ['cyan', '#00e5ff'], ['lime green', '#7cff00'], ['violet', '#8b00ff'], ['bright orange', '#ff6a00'], ['black', '#000000'], ['white', '#ffffff']];
@@ -944,7 +947,6 @@ function setTab(t) {
   document.querySelectorAll('nav.tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === t));
   ['invest', 'chart', 'table', 'summary', 'about'].forEach((k) => ($('tab-' + k).hidden = k !== t));
   document.querySelector('.layout').classList.toggle('noside', t === 'invest');
-  document.querySelector('nav.tabs [data-tab=invest]').hidden = t !== 'invest';
   if (t === 'chart') syncControls();
   if (t === 'table') syncTableControls();
   renderActive();
