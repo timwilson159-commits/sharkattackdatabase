@@ -720,11 +720,19 @@ function renderPredResult() {
   } else {
     const m = P.match;
     h += '<div class="banner">' + (m == null ? '' : m >= 0.85 ? 'Your sketch has almost the same shape as the data' : m >= 0.5 ? 'Your sketch follows part of the real pattern' : m >= 0 ? 'Your sketch is quite different from the real pattern' : 'Your sketch is close to the opposite of the real pattern') + '</div>' +
-      '<p class="note" style="margin:0">Shape match: <b>r = ' + (m == null ? '–' : m.toFixed(2)) + '</b>. The dotted orange line on the graph is your prediction, scaled to the same height. Only the shape counts.</p>';
+      '<p class="note" style="margin:0">Shape match: <b>r = ' + (m == null ? '–' : m.toFixed(2)) + '</b>. The dotted ' + (P.colour ? P.colour.name : '') + ' line with diamond markers is your prediction, scaled to the same height. Only the shape counts.</p>';
   }
   h += '<p class="note" style="margin-top:6px">Were you surprised? Think about <i>why</i>, then use the controls below to dig deeper: add a filter, change the graph, or split by another field.</p><div><button class="btn ghost" id="predAgain">↺ Try this prediction again</button></div></div>';
   el.innerHTML = h;
   $('predAgain').onclick = () => { P.revealed = false; P.st = newPredState(sp); $('chartArea').hidden = true; $('predResult').hidden = true; $('predCard').hidden = false; renderPred(); $('predCard').scrollIntoView({ behavior: 'smooth' }); };
+}
+const PRED_CANDS = [['hot pink', '#ff1fb4'], ['electric yellow', '#ffd400'], ['cyan', '#00e5ff'], ['lime green', '#7cff00'], ['violet', '#8b00ff'], ['bright orange', '#ff6a00'], ['black', '#000000'], ['white', '#ffffff']];
+const rgbOf = (c) => { c = String(c || '').trim(); if (/^#[0-9a-f]{6}/i.test(c)) return [1, 3, 5].map((i) => parseInt(c.substr(i, 2), 16)); const m = c.match(/\d+(\.\d+)?/g); return m && m.length >= 3 ? m.slice(0, 3).map(Number) : null; };
+const cDist = (a, b) => { const rm = (a[0] + b[0]) / 2, dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2]; return Math.sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db); };
+function predColour(used) {
+  const u = used.map(rgbOf).filter(Boolean); let best = null;
+  PRED_CANDS.forEach(([name, hex]) => { const d = Math.min(...u.map((x) => cDist(rgbOf(hex), x)), 999); if (!best || d > best.d) best = { name, hex, d }; });
+  return best;
 }
 function addSketchOverlay(cfg) {
   const P = S.pred, st = P.st, ds = cfg.data.datasets.filter((d) => !d.isTrend), G = cfg.data.labels.length;
@@ -732,7 +740,9 @@ function addSketchOverlay(cfg) {
   const n = st.ys.length, at = (t) => { const p = t * (n - 1), a = Math.floor(p), b = Math.min(n - 1, a + 1); return st.ys[a] + (st.ys[b] - st.ys[a]) * (p - a); };
   const mine = Array.from({ length: G }, (_, j) => at(G > 1 ? j / (G - 1) : 0));
   const rg = regress(mine, tot); P.match = rg ? rg.r : null;
-  cfg.data.datasets.push({ label: 'Your prediction (shape only)', type: 'line', data: mine.map((v) => +(v * max).toFixed(3)), borderColor: css('--cta'), backgroundColor: css('--cta'), borderWidth: 3, borderDash: [2, 5], pointRadius: 3, isTrend: true, stack: 'trend', order: -2 });
+  const pc = predColour(cfg.data.datasets.filter((d) => !d.isOverlay).map((d) => d.borderColor || d.backgroundColor).concat([css('--ink')]));
+  P.colour = pc;
+  cfg.data.datasets.push({ label: 'Your prediction (shape only)', type: 'line', data: mine.map((v) => +(v * max).toFixed(3)), borderColor: pc.hex, backgroundColor: pc.hex, borderWidth: 4, borderDash: [3, 6], borderCapStyle: 'round', pointStyle: 'rectRot', pointRadius: 6, pointBorderColor: css('--card'), pointBorderWidth: 2, isTrend: true, isOverlay: true, stack: 'trend', order: -2 });
   cfg.options.plugins.legend.display = true;
 }
 
