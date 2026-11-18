@@ -78,7 +78,7 @@ F.forEach((f) => {
 /* ---------- State ---------- */
 const DEF_COLS = ['id', 'year', 'month', 'state', 'location', 'species', 'length', 'outcome', 'activity', 'gender', 'age', 'provoked'];
 const S = {
-  tab: 'chart', colors: { scheme: 'default', over: {} }, pred: null, _cols: [],
+  tab: 'invest', colors: { scheme: 'default', over: {} }, pred: null, _cols: [],
   chart: { type: 'column', x: 'species', y: 'length', measure: 'count', vf: 'length', split: '', bin: '', sort: 'desc', top: 10, trend: false, stack: true, horiz: false, jitter: true, vals: true, title: '' },
   table: { cols: DEF_COLS.slice(), sort: [], page: 0, size: 25, q: '' },
   piv: { row: 'state', col: 'outcome', measure: 'count', vf: 'age', show: 'values', bin: '' },
@@ -624,17 +624,18 @@ function startPreset(i) {
   Object.assign(S.chart, { trend: false, stack: true, horiz: false, title: '', bin: '', vals: true, split: '', sort: p.c.sort || 'desc' }, p.c);
   S.colors.over = {};
   S.pred = { i, spec: p.pred, revealed: false, sig: sigOf(), st: newPredState(p.pred) };
-  $('starters').open = false;
   renderFilters(); applyFilters();
-  $('chartArea').hidden = true; $('predResult').hidden = true; $('predCard').hidden = false;
+  gate(true); $('predResult').hidden = true; $('predCard').hidden = false; $('investGrid').hidden = true;
   renderPred();
-  $('predCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+function gate(on) { $('chartArea').hidden = on; $('predLock').hidden = !on; }
 function renderPred() {
   const P = S.pred, sp = P.spec, st = P.st, host = $('predCard');
-  host.innerHTML = '<div class="eyebrow">🔮 Predict first</div><h3>' + esc(PRESETS[P.i].t) + '</h3><p class="ask">' + esc(sp.ask) + '</p><div id="predWidget"></div>' +
+  host.innerHTML = '<p class="backlink"><button class="link" id="predBack">← All investigations</button></p><div class="eyebrow">🔮 Predict first</div><h3>' + esc(PRESETS[P.i].t) + '</h3><p class="ask">' + esc(sp.ask) + '</p><div id="predWidget"></div>' +
     '<div class="revealbar"><button class="btn cta" id="revealBtn" disabled>Lock in my prediction and reveal the data</button><p class="hint" id="revealHint"></p></div>';
   const w = $('predWidget'), btn = $('revealBtn');
+  $('predBack').onclick = () => { host.hidden = true; $('investGrid').hidden = false; S.pred = null; gate(false); $('predResult').hidden = true; };
   const ready = () => {
     const ok = sp.kind === 'rank' ? st.touched : sp.kind === 'sliders' ? st.touched.every(Boolean) : st.moved.size >= Math.ceil(sp.pts / 2);
     btn.disabled = !ok;
@@ -643,9 +644,8 @@ function renderPred() {
   if (sp.kind === 'rank') rankWidget(w, sp, st, ready); else if (sp.kind === 'sliders') sliderWidget(w, sp, st, ready); else sketchWidget(w, sp, st, ready);
   ready();
   btn.onclick = () => {
-    P.revealed = true; $('predCard').hidden = true; $('chartArea').hidden = false;
-    syncControls(); renderChart(); renderPredResult(); $('predResult').hidden = false;
-    $('predResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    P.revealed = true; $('predCard').hidden = true; gate(false); $('investGrid').hidden = false;
+    renderPredResult(); $('predResult').hidden = false; setTab('chart'); window.scrollTo(0, 0);
   };
 }
 function rankWidget(w, sp, st, ready) {
@@ -725,7 +725,7 @@ function renderPredResult() {
   }
   h += '<p class="note" style="margin-top:6px">Were you surprised? Think about <i>why</i>, then use the controls below to dig deeper: add a filter, change the graph, or split by another field.</p><div><button class="btn ghost" id="predAgain">↺ Try this prediction again</button></div></div>';
   el.innerHTML = h;
-  $('predAgain').onclick = () => { P.revealed = false; P.st = newPredState(sp); $('chartArea').hidden = true; $('predResult').hidden = true; $('predCard').hidden = false; renderPred(); $('predCard').scrollIntoView({ behavior: 'smooth' }); };
+  $('predAgain').onclick = () => { P.revealed = false; P.st = newPredState(sp); gate(true); $('predResult').hidden = true; $('predCard').hidden = false; $('investGrid').hidden = true; renderPred(); setTab('invest'); window.scrollTo(0, 0); };
 }
 const PRED_CANDS = [['hot pink', '#ff1fb4'], ['electric yellow', '#ffd400'], ['cyan', '#00e5ff'], ['lime green', '#7cff00'], ['violet', '#8b00ff'], ['bright orange', '#ff6a00'], ['black', '#000000'], ['white', '#ffffff']];
 const rgbOf = (c) => { c = String(c || '').trim(); if (/^#[0-9a-f]{6}/i.test(c)) return [1, 3, 5].map((i) => parseInt(c.substr(i, 2), 16)); const m = c.match(/\d+(\.\d+)?/g); return m && m.length >= 3 ? m.slice(0, 3).map(Number) : null; };
@@ -942,7 +942,8 @@ function setupAbout() {
 function setTab(t) {
   S.tab = t;
   document.querySelectorAll('nav.tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === t));
-  ['chart', 'table', 'summary', 'about'].forEach((k) => ($('tab-' + k).hidden = k !== t));
+  ['invest', 'chart', 'table', 'summary', 'about'].forEach((k) => ($('tab-' + k).hidden = k !== t));
+  document.querySelector('.layout').classList.toggle('noside', t === 'invest');
   if (t === 'chart') syncControls();
   if (t === 'table') syncTableControls();
   renderActive();
@@ -973,6 +974,7 @@ function init() {
   $('filtToggle').onclick = () => $('side').classList.toggle('closed');
   if (matchMedia('(max-width:980px)').matches) $('side').classList.add('closed');
   document.querySelectorAll('nav.tabs button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+  $('goPred').onclick = () => setTab('invest');
   $('themeBtn').onclick = () => { document.documentElement.dataset.theme = isDark() ? 'light' : 'dark'; try { localStorage.setItem('shark_theme', document.documentElement.dataset.theme); } catch (e) { } renderActive(); };
   try { const th = localStorage.getItem('shark_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderActive());

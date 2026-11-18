@@ -220,6 +220,16 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
 .mdl dt:nth-last-child(2),.mdl dd:last-child{border-bottom:0}
 .mfoot{display:flex;gap:10px;align-items:center;padding:14px 24px;border-top:1px solid var(--line);flex-wrap:wrap}
 @media (max-width:640px){.mdl{grid-template-columns:1fr}.mdl dt{border-bottom:0;padding-bottom:2px}.modal-back{padding:8px}.mhead,.mbody,.mfoot{padding-left:16px;padding-right:16px}}
+.hero h1{margin:0 0 6px;font-size:1.7rem;letter-spacing:-.03em}
+.hero p{margin:0;color:var(--muted);max-width:720px;font-size:1rem}
+.steps{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.steps li{display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:10px 12px;font-size:.86rem;font-weight:600}
+.steps b{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none;font-size:.8rem}
+#investGrid .presets{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-top:0}
+#investGrid .preset{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);padding:16px}
+#investGrid .preset:hover{border-color:var(--accent)}
+.layout.noside{grid-template-columns:minmax(0,1fr)}.layout.noside aside.side{display:none}
+.backlink{margin:0 0 10px}
 #filtToggle{display:none}
 @media (max-width:980px){
   .layout{grid-template-columns:minmax(0,1fr);padding:14px 12px 30px}
@@ -243,7 +253,8 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
     <div><b>Shark Incident Explorer</b><small>Australian Shark-Incident Database</small></div>
   </div>
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="chart" aria-selected="true">Graph</button>
+    <button role="tab" data-tab="invest" aria-selected="true">Data Investigations</button>
+    <button role="tab" data-tab="chart" aria-selected="false">Graph</button>
     <button role="tab" data-tab="table" aria-selected="false">Data table</button>
     <button role="tab" data-tab="summary" aria-selected="false">Summary</button>
     <button role="tab" data-tab="about" aria-selected="false">About the data</button>
@@ -270,13 +281,18 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
 </aside>
 
 <main>
-  <section id="tab-chart">
-    <details class="card" id="starters" open>
-      <summary class="starters-head">Investigation ideas <span>Predict first, then see what the data says</span></summary>
-      <div class="presets" id="presetGrid"></div>
-    </details>
-
+  <section id="tab-invest">
+    <div class="card hero">
+      <h1>Data Investigations</h1>
+      <p>Test your instincts against 1,296 real shark incidents. Pick an investigation, <b>make a prediction first</b>, then see what the data really says.</p>
+      <ol class="steps"><li><b>1</b><span>Choose a question</span></li><li><b>2</b><span>Predict the answer</span></li><li><b>3</b><span>Reveal and compare</span></li><li><b>4</b><span>Dig deeper in the Graph tab</span></li></ol>
+    </div>
+    <div id="investGrid"><div class="presets" id="presetGrid"></div></div>
     <div class="card pred" id="predCard" hidden></div>
+  </section>
+
+  <section id="tab-chart" hidden>
+    <div class="card" id="predLock" hidden><h3>🔒 Finish your prediction first</h3><p class="note" style="margin:0 0 12px">You started a Data Investigation. Lock in your prediction before the graph is shown.</p><button class="btn" id="goPred">Go to my prediction</button></div>
     <div class="card" id="predResult" hidden></div>
 
     <div id="chartArea">
