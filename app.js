@@ -480,6 +480,7 @@ function renderChart(skipColors) {
   if (S.pred && S.pred.revealed && S.pred.spec.kind === 'sketch' && S.pred.sig === sigOf() && !res.pie && res.cfg.data.labels) addSketchOverlay(res.cfg);
   if (!skipColors) renderColorBox();
   chart = new Chart($('chart'), res.cfg);
+  $('chart').ondblclick = (e) => { if (!chart) return; const el = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true)[0]; if (!el) return; const p = chart.data.datasets[el.datasetIndex].data[el.index]; if (p && p.r) openRecord(p.r.id, [...new Set(chart.data.datasets.flatMap((d) => (d.data || []).map((q) => q && q.r && q.r.id).filter(Boolean)))]); };
   if (S.pred && S.pred.revealed && S.pred.spec.kind === 'sketch' && !$('predResult').hidden && S.pred.sig === sigOf()) renderPredResult();
   $('chart').setAttribute('aria-label', res.title);
   $('chartStats').innerHTML = res.stats || '';
@@ -746,6 +747,60 @@ function addSketchOverlay(cfg) {
   cfg.options.plugins.legend.display = true;
 }
 
+/* ---------- Full record pop-up ---------- */
+const BYID = {}; D.forEach((r) => (BYID[r.id] = r));
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+let recPromise = null; const recCur = { id: null, list: [], showEmpty: false };
+const loadRecords = () => recPromise || (recPromise = new Promise((res, rej) => { if (window.SHARK_RECORDS) return res(); const sc = document.createElement('script'); sc.src = 'records.js'; sc.onload = res; sc.onerror = () => { recPromise = null; rej(); }; document.head.appendChild(sc); }));
+const REC_SECTIONS = [
+  ['The incident', [2, 1, 42, 3, 16, 17, 18, 39]],
+  ['Location', [4, 5, 6, 7, 8, 9, 49]],
+  ['The shark', [10, 11, 14, 15, 12, 13, 25, 24, 27, 44]],
+  ['The victim', [30, 31, 19, 20, 21, 26, 32, 33, 34, 35, 36, 37]],
+  ['Injury and response', [28, 29, 22, 23, 38, 55, 56]],
+  ['Conditions', [43, 45, 46, 47, 48, 50, 51, 52, 53, 54, 40, 41]],
+  ['Sources', [57, 58]],
+];
+function recVal(i, v) {
+  if (i === 1 && typeof v === 'number') return MONTHS_LONG[v - 1] + ' (' + v + ')';
+  if (i === 42) { const d = String(v).replace(/\D/g, ''); if (d.length >= 3) { const z = d.padStart(4, '0'); return z.slice(0, 2) + ':' + z.slice(2) + ' (' + v + ')'; } }
+  return String(v);
+}
+function ensureModal() {
+  if ($('recModal')) return;
+  const m = document.createElement('div'); m.id = 'recModal'; m.className = 'modal-back'; m.hidden = true;
+  m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="recTitle"><div class="mhead"><div><div class="meyebrow" id="recEye"></div><h2 id="recTitle"></h2><div class="msub" id="recSub"></div><div class="mchips" id="recChips"></div></div><button class="mclose" id="recClose" aria-label="Close">✕</button></div><div class="mbody" id="recBody"></div><div class="mfoot"><label class="chk"><input type="checkbox" id="recEmpty"><span>Show fields with no data</span></label><span style="flex:1"></span><button class="btn ghost" id="recPrev">◀ Previous</button><span class="hint" id="recPos" style="margin:0"></span><button class="btn ghost" id="recNext">Next ▶</button></div></div>';
+  document.body.appendChild(m);
+  const close = () => { m.hidden = true; document.body.style.overflow = ''; };
+  $('recClose').onclick = close; m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  document.addEventListener('keydown', (e) => { if (m.hidden) return; if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); });
+  $('recPrev').onclick = () => step(-1); $('recNext').onclick = () => step(1);
+  $('recEmpty').onchange = () => { recCur.showEmpty = $('recEmpty').checked; renderRecord(); };
+}
+function step(d) { const i = recCur.list.indexOf(recCur.id) + d; if (i >= 0 && i < recCur.list.length) { recCur.id = recCur.list[i]; renderRecord(); } }
+function openRecord(id, list) {
+  ensureModal(); recCur.id = id; recCur.list = list && list.length ? list : [id];
+  $('recModal').hidden = false; document.body.style.overflow = 'hidden';
+  $('recBody').innerHTML = '<p class="note">Loading the full record…</p>';
+  loadRecords().then(renderRecord, () => { $('recBody').innerHTML = '<div class="stat warn">Could not load the full records file (records.js).</div>'; });
+}
+function renderRecord() {
+  const id = recCur.id, R = window.SHARK_RECORDS, rec = R.rows[id] || {}, c = BYID[id] || {};
+  $('recEye').textContent = 'Incident record #' + id;
+  $('recTitle').textContent = (c.location || 'Unknown location') + (c.state ? ', ' + c.state : '');
+  $('recSub').textContent = (c.month ? MONTHS_LONG[c.month - 1] + ' ' : '') + c.year + (c.tod ? ' · ' + c.tod : '');
+  $('recChips').innerHTML = [c.outcome, c.provoked, c.species, c.activity].filter(Boolean).map((x) => '<span class="chip">' + esc(x) + '</span>').join('');
+  const filled = Object.keys(rec).length; let h = '<p class="note" style="margin:0 0 12px">' + filled + ' of ' + R.cols.length + ' fields recorded. Values are shown exactly as originally recorded (graphs use a tidied version).</p>';
+  REC_SECTIONS.forEach(([title, idx]) => {
+    const items = idx.filter((i) => recCur.showEmpty || rec[i] !== undefined);
+    if (!items.length) return;
+    h += '<h3 class="msec">' + title + '</h3><dl class="mdl">' + items.map((i) => '<dt>' + esc(R.cols[i]) + '</dt><dd' + (rec[i] === undefined ? ' class="na"' : '') + '>' + (rec[i] === undefined ? 'not recorded' : esc(recVal(i, rec[i]))) + '</dd>').join('') + '</dl>';
+  });
+  $('recBody').innerHTML = h; $('recBody').scrollTop = 0;
+  const i = recCur.list.indexOf(id); $('recPos').textContent = (i + 1) + ' of ' + recCur.list.length;
+  $('recPrev').disabled = i <= 0; $('recNext').disabled = i >= recCur.list.length - 1;
+}
+
 /* ---------- Table ---------- */
 const cmp = (f, a, b) => {
   if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1;
@@ -765,7 +820,7 @@ function renderTable() {
   let h = '<table class="t"><thead><tr>';
   cols.forEach((f) => { const s = T.sort.findIndex((x) => x.key === f.k); const arrow = s < 0 ? '' : (T.sort[s].dir > 0 ? ' ▲' : ' ▼') + (T.sort.length > 1 ? '<sup>' + (s + 1) + '</sup>' : ''); h += '<th data-k="' + f.k + '" class="' + (f.t === 'num' ? 'n' : '') + '" title="' + esc(f.d) + '">' + esc(lab(f)) + arrow + '</th>'; });
   h += '</tr></thead><tbody>';
-  slice.forEach((r) => { h += '<tr>' + cols.map((f) => { const v = r[f.k]; return v == null ? '<td class="na ' + (f.t === 'num' ? 'n' : '') + '">–</td>' : '<td class="' + (f.t === 'num' ? 'n' : '') + '">' + esc(fmtV(f, v)) + '</td>'; }).join('') + '</tr>'; });
+  slice.forEach((r) => { h += '<tr data-id="' + r.id + '" title="Double-click for the full record">' + cols.map((f) => { const v = r[f.k]; if (f.k === 'id') return '<td><button class="idlink" data-id="' + r.id + '">#' + r.id + '</button></td>'; return v == null ? '<td class="na ' + (f.t === 'num' ? 'n' : '') + '">–</td>' : '<td class="' + (f.t === 'num' ? 'n' : '') + '">' + esc(fmtV(f, v)) + '</td>'; }).join('') + '</tr>'; });
   if (!slice.length) h += '<tr><td colspan="' + cols.length + '">No incidents match.</td></tr>';
   $('tblWrap').innerHTML = h + '</tbody></table>';
   $('tblWrap').querySelectorAll('th').forEach((th) => (th.onclick = (e) => {
@@ -781,6 +836,8 @@ function renderTable() {
   $('pp').onclick = () => { T.page--; renderTable(); }; $('pn').onclick = () => { T.page++; renderTable(); };
 }
 function setupTable() {
+  $('tblWrap').addEventListener('click', (e) => { const b = e.target.closest('.idlink'); if (b) openRecord(+b.dataset.id, tableRows().rows.map((r) => r.id)); });
+  $('tblWrap').addEventListener('dblclick', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) { getSelection().removeAllRanges(); openRecord(+tr.dataset.id, tableRows().rows.map((r) => r.id)); } });
   const cp = $('colpick'); let h = '';
   GROUPS.forEach((g) => { h += '<h4>' + g + '</h4>'; F.filter((f) => f.g === g).forEach((f) => (h += '<label><input type="checkbox" data-k="' + f.k + '">' + esc(lab(f)) + '</label>')); });
   cp.innerHTML = h;

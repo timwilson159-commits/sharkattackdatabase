@@ -198,6 +198,28 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
 .track .mk{position:absolute;top:0;transform:translateX(-50%);font-size:.68rem;font-weight:700;text-align:center;white-space:nowrap}
 .track .mk i{display:block;width:14px;height:14px;border-radius:50%;margin:11px auto 0;border:3px solid var(--card)}
 .track .you{top:-17px}.track .you i{background:var(--cta)}.track .act i{background:var(--accent)}
+.idlink{background:none;border:0;color:var(--accent);font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.idlink:hover{filter:brightness(1.2)}
+.modal-back{position:fixed;inset:0;background:rgba(8,15,24,.55);backdrop-filter:blur(3px);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-back[hidden]{display:none}
+.modal{background:var(--card);border-radius:18px;box-shadow:0 30px 80px -20px rgba(0,0,0,.55);width:100%;max-width:860px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+.mhead{display:flex;gap:16px;padding:22px 24px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.mhead>div:first-child{flex:1;min-width:0}
+.meyebrow{font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.mhead h2{margin:4px 0 2px;font-size:1.45rem;letter-spacing:-.02em}
+.msub{color:var(--muted);font-size:.9rem}
+.mchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.mclose{background:var(--field);border:0;border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--ink);font-size:1rem;flex:none}
+.mclose:hover{background:var(--line)}
+.mbody{padding:18px 24px;overflow:auto;flex:1}
+.msec{margin:20px 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.mdl{display:grid;grid-template-columns:minmax(150px,230px) 1fr;margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.mdl dt,.mdl dd{margin:0;padding:8px 14px;border-bottom:1px solid var(--line);font-size:.88rem}
+.mdl dt{color:var(--muted);background:var(--field);font-weight:600}
+.mdl dd{overflow-wrap:anywhere}.mdl dd.na{color:var(--muted);font-style:italic}
+.mdl dt:nth-last-child(2),.mdl dd:last-child{border-bottom:0}
+.mfoot{display:flex;gap:10px;align-items:center;padding:14px 24px;border-top:1px solid var(--line);flex-wrap:wrap}
+@media (max-width:640px){.mdl{grid-template-columns:1fr}.mdl dt{border-bottom:0;padding-bottom:2px}.modal-back{padding:8px}.mhead,.mbody,.mfoot{padding-left:16px;padding-right:16px}}
 #filtToggle{display:none}
 @media (max-width:980px){
   .layout{grid-template-columns:minmax(0,1fr);padding:14px 12px 30px}
@@ -307,7 +329,7 @@ svg.sketch circle:hover,svg.sketch circle.on{fill:var(--accent)}
         <button class="btn ghost" id="t-csv">⬇ CSV</button>
       </div>
       <details style="margin-top:14px"><summary>Choose columns</summary><div class="colpick" id="colpick"></div></details>
-      <div class="hint" style="margin:12px 0 0">Click a column heading to sort. <b>Shift+click</b> adds a second sort level.</div>
+      <div class="hint" style="margin:12px 0 0">Click a column heading to sort (<b>Shift+click</b> adds a second level). <b>Click a record ID or double-click a row</b> to open the full original record.</div>
       <div class="chips" id="sortChips"></div>
       <div class="tblwrap" id="tblWrap"></div>
       <div class="pager" id="pager"></div>

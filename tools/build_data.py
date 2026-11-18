@@ -266,3 +266,30 @@ for r in rows[1:]:
 open(out, 'w', encoding='utf-8').write(
     'window.SHARK_DATA=' + json.dumps(data, separators=(',', ':'), ensure_ascii=False) + ';\n')
 print(len(data), 'records written')
+
+# ---- Full original records (all 59 columns) for the "full record" pop-up ----
+LABELS = ['Record number (UIN)', 'Month', 'Year', 'Victim injury', 'State', 'Location', 'Latitude', 'Longitude', 'Site category', 'Site category comment',
+          'Shark common name', 'Shark scientific name', 'Shark identification method', 'Shark identification source', 'Shark length (m)', 'Basis for length',
+          'Provoked / unprovoked', 'Provocative act', 'Number of sharks', 'Victim activity', 'Fish speared?', 'Commercial dive activity', 'Object of bite',
+          'Present at time of bite', 'Direction of first strike', 'Shark behaviour', 'Victim aware of shark?', 'Shark captured?', 'Injury location', 'Injury severity',
+          'Victim gender', 'Victim age', 'Victim clothing', 'Clothing coverage', 'Dominant clothing colour', 'Other clothing colour', 'Clothing pattern', 'Fin colour',
+          'Diversionary action taken', 'Diversionary action outcome', 'People within 3 m', 'People 3-15 m away', 'Time of incident', 'Depth of incident (m)',
+          'Teeth recovered', 'Time in water (min)', 'Water temperature (°C)', 'Total water depth (m)', 'Water visibility (m)', 'Distance to shore (m)',
+          'Spring or neap tide', 'Tidal cycle', 'Wind condition', 'Weather condition', 'Air temperature (°C)', 'Personal protective device', 'Deterrent brand and type',
+          'Data source', 'Reference']
+assert len(LABELS) == 59
+recs = {}
+for r in rows[1:]:
+    if r[0] is None:
+        continue
+    d = {}
+    for i in range(59):
+        v = r[i]
+        if isinstance(v, str):
+            v = v.replace('\xa0', ' ').strip()
+        if v not in (None, ''):
+            d[i] = v
+    recs[r[0]] = d
+rp = out.replace('data.js', 'records.js')
+open(rp, 'w', encoding='utf-8').write('window.SHARK_RECORDS=' + json.dumps({'cols': LABELS, 'rows': recs}, separators=(',', ':'), ensure_ascii=False) + ';\n')
+print(len(recs), 'full records written to', rp)

@@ -7,6 +7,7 @@ Open `index.html` (or the GitHub Pages site). No server or build step needed; Ch
 ## Files
 - `index.html`, `app.js`: the interface
 - `data.js`: cleaned data (generated)
+- `records.js`: every original field of every record, loaded on demand by the full-record pop-up
 - `chart.umd.min.js`: Chart.js 4.4.1
 - `tools/build_data.py`: rebuilds `data.js` from the source spreadsheet (`pip install openpyxl`, then `python tools/build_data.py <xlsx> data.js`)
 
